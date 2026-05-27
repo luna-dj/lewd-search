@@ -393,7 +393,7 @@ export default class LewdSearchEngine {
     const doFetch = context?.fetch ?? fetch;
     const p = Math.max(1, Number(page) || 1);
 
-    const pageRange = Array.from({ length: MAX_PAGES }, (_, i) => p + i);
+    const pageRange = [p];
 
     const fetchAllPages = async (fn: (q: string, pg: number, f: typeof fetch) => Promise<any[]>) => {
       try {
