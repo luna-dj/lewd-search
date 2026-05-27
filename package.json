@@ -2,7 +2,6 @@
   "name": "lewd-search",
   "description": "NSFW search engine for DeGoog - aggregates real porn sites with cheerio scraping",
   "author": "luna-dj",
-  "repo-image": "https://raw.githubusercontent.com/luna-dj/lewd-search/main/repo-image.png",
   "engines": [
     {
       "path": "engines/lewd-search",
@@ -10,5 +9,12 @@
       "description": "Multi-source NSFW engine aggregating Eporner (API), XVideos, Pornhub, xHamster, XNXX, YouPorn, RedTube, TGTube (cheerio), Iwara (API), Rule34Video. Use !lewd <query>.",
       "version": "1.0.2"
     }
-  ]
+  ],
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "cheerio": "^1.0.0"
+  }
 }
