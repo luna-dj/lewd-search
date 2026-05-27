@@ -4,8 +4,9 @@ export const type = "NSFW";
 export const bangShortcut = "lewd";
 
 const PER_SOURCE = 100;
-const TIMEOUT_MS = 8000;
-const MAX_PAGES = 5;
+const MAX_PAGES = 3;
+const PAGE_TIMEOUT_MS = 8000;
+const GLOBAL_TIMEOUT_MS = 20000;
 
 const USER_AGENTS = [
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
@@ -51,7 +52,7 @@ const _err = (src: string, e: unknown) => console.error(`[lewd/${src}]`, e);
 
 const _fetchWithTimeout = async (url: string, fetchFn: typeof fetch, options: RequestInit = {}) => {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), PAGE_TIMEOUT_MS);
   try {
     const response = await fetchFn(url, { ...options, signal: controller.signal as any });
     return response;
@@ -381,37 +382,45 @@ export default class LewdSearchEngine {
     const pageRange = Array.from({ length: MAX_PAGES }, (_, i) => p + i);
 
     const fetchAllPages = async (fn: (q: string, pg: number, f: typeof fetch) => Promise<any[]>) => {
-      const results: any[] = [];
-      for (const pg of pageRange) {
-        const r = await fn(query, pg, doFetch);
-        results.push(...r);
-      }
-      return results;
+      const results = await Promise.allSettled(pageRange.map((pg) => fn(query, pg, doFetch)));
+      return results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
     };
 
     const [eporner, iwara, xvideos, pornhub, xhamster, xnxx, youporn, redtube, tgtube] =
-      await Promise.allSettled([
-        fetchAllPages(_eporner),
-        fetchAllPages(_iwara),
-        fetchAllPages(_xvideos),
-        fetchAllPages(_pornhub),
-        fetchAllPages(_xhamster),
-        fetchAllPages(_xnxx),
-        fetchAllPages(_youporn),
-        fetchAllPages(_redtube),
-        fetchAllPages(_tgtube),
-      ]);
+      await Promise.race([
+        Promise.allSettled([
+          fetchAllPages(_eporner),
+          fetchAllPages(_iwara),
+          fetchAllPages(_xvideos),
+          fetchAllPages(_pornhub),
+          fetchAllPages(_xhamster),
+          fetchAllPages(_xnxx),
+          fetchAllPages(_youporn),
+          fetchAllPages(_redtube),
+          fetchAllPages(_tgtube),
+        ]),
+        new Promise<"timedout">((resolve) => setTimeout(() => resolve("timedout"), GLOBAL_TIMEOUT_MS)),
+      ]) as any;
+
+    const timedout = eporner === "timedout";
+    if (timedout) {
+      console.warn("[lewd] Global timeout exceeded");
+    }
+
+    const sources = timedout
+      ? [{ status: "rejected" }, { status: "rejected" }, { status: "rejected" }, { status: "rejected" }, { status: "rejected" }, { status: "rejected" }, { status: "rejected" }, { status: "rejected" }, { status: "rejected" }]
+      : eporner;
 
     return _interleave(
-      eporner.status === "fulfilled" ? eporner.value : [],
-      iwara.status === "fulfilled" ? iwara.value : [],
-      xvideos.status === "fulfilled" ? xvideos.value : [],
-      pornhub.status === "fulfilled" ? pornhub.value : [],
-      xhamster.status === "fulfilled" ? xhamster.value : [],
-      xnxx.status === "fulfilled" ? xnxx.value : [],
-      youporn.status === "fulfilled" ? youporn.value : [],
-      redtube.status === "fulfilled" ? redtube.value : [],
-      tgtube.status === "fulfilled" ? tgtube.value : [],
+      sources[0].status === "fulfilled" ? sources[0].value : [],
+      sources[1].status === "fulfilled" ? sources[1].value : [],
+      sources[2].status === "fulfilled" ? sources[2].value : [],
+      sources[3].status === "fulfilled" ? sources[3].value : [],
+      sources[4].status === "fulfilled" ? sources[4].value : [],
+      sources[5].status === "fulfilled" ? sources[5].value : [],
+      sources[6].status === "fulfilled" ? sources[6].value : [],
+      sources[7].status === "fulfilled" ? sources[7].value : [],
+      sources[8].status === "fulfilled" ? sources[8].value : [],
     );
   }
 }
