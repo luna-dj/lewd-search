@@ -4,7 +4,6 @@ export const bangShortcut = "lewd";
 const PER_SOURCE = 100;
 const MAX_PAGES = 3;
 const PAGE_TIMEOUT_MS = 8000;
-const GLOBAL_TIMEOUT_MS = 20000;
 const USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
@@ -41,8 +40,23 @@ const _jsonHeaders = (baseUrl) => {
         Origin: o,
     };
 };
+const _isAbort = (e) => {
+    if (e instanceof Error)
+        return e.name === "AbortError" || e.name === "TimeoutError";
+    if (typeof e === "object" && e !== null) {
+        const err = e;
+        if (err.name === "AbortError" || err.name === "TimeoutError")
+            return true;
+        if (err.code === 20 || err.code === 23)
+            return true;
+        const msg = String(err.message || "");
+        if (msg.includes("aborted") || msg.includes("abort"))
+            return true;
+    }
+    return false;
+};
 const _err = (src, e) => {
-    if (e instanceof Error && e.name === "AbortError")
+    if (_isAbort(e))
         return;
     console.error(`[lewd/${src}]`, e);
 };
@@ -478,16 +492,7 @@ export default class LewdSearchEngine {
             fetchAllPages(_redtube),
             fetchAllPages(_tgtube),
         ];
-        const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), GLOBAL_TIMEOUT_MS));
-        const results = await Promise.race([Promise.allSettled(sourceFns), timeoutPromise]);
-        let settled;
-        if (results === null) {
-            console.warn("[lewd] Global timeout exceeded");
-            settled = sourceFns.map(() => ({ status: "rejected" }));
-        }
-        else {
-            settled = results;
-        }
+        const settled = await Promise.allSettled(sourceFns);
         return _interleave(settled[0].status === "fulfilled" ? settled[0].value : [], settled[1].status === "fulfilled" ? settled[1].value : [], settled[2].status === "fulfilled" ? settled[2].value : [], settled[3].status === "fulfilled" ? settled[3].value : [], settled[4].status === "fulfilled" ? settled[4].value : [], settled[5].status === "fulfilled" ? settled[5].value : [], settled[6].status === "fulfilled" ? settled[6].value : [], settled[7].status === "fulfilled" ? settled[7].value : [], settled[8].status === "fulfilled" ? settled[8].value : []);
     }
 }
