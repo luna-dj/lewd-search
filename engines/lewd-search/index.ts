@@ -2,7 +2,6 @@ import * as cheerio from "cheerio";
 
 export const name = "lewd-search"
 export const type = "NSFW"
-export const bangShortcut = "lewd"
 
 interface SearchResult {
   title: string
@@ -33,14 +32,14 @@ const _err = (src: string, e: unknown) => console.error(`[lewd/${src}]`, e)
 const _sel = ($: cheerio.CheerioAPI, sel: string) =>
   $(sel).first().text().trim()
 
-const _href = ($: cheerio.CheerioAPI, el: cheerio.Element, base: string): string => {
+const _href = ($: cheerio.CheerioAPI, el: any, base: string): string => {
   let h = $(el).attr("href") || ""
   if (h.startsWith("//")) h = `https:${h}`
   else if (h.startsWith("/")) h = `${base}${h}`
   return h
 }
 
-const _thumb = ($: cheerio.CheerioAPI, el: cheerio.Element): string | undefined => {
+const _thumb = ($: cheerio.CheerioAPI, el: any): string | undefined => {
   const img = $(el).find("img").first()
   return img.attr("data-src") || img.attr("src") || undefined
 }
