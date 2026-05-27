@@ -3,7 +3,7 @@ import * as cheerio from "cheerio";
 export const type = "NSFW";
 export const bangShortcut = "lewd";
 
-const PER_SOURCE = 10;
+const PER_SOURCE = 100;
 const TIMEOUT_MS = 8000;
 
 const USER_AGENTS = [
