@@ -3,6 +3,7 @@ export const type = "NSFW";
 export const bangShortcut = "lewd";
 const PER_SOURCE = 100;
 const TIMEOUT_MS = 8000;
+const MAX_PAGES = 5;
 const USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
@@ -256,7 +257,8 @@ const _xhamster = async (query, page, fetchFn) => {
 const _xnxx = async (query, page, fetchFn) => {
     const base = "https://www.xnxx.com";
     try {
-        const url = `${base}/search/${encodeURIComponent(query.trim())}${page > 1 ? `-${page}` : ""}`;
+        const pageSuffix = page === 1 ? "" : `-${page}`;
+        const url = `${base}/search/${encodeURIComponent(query.trim())}${pageSuffix}`;
         const res = await _fetchWithTimeout(url, fetchFn, { headers: _headers(base) });
         if (!res.ok)
             return [];
@@ -298,7 +300,8 @@ const _xnxx = async (query, page, fetchFn) => {
 const _youporn = async (query, page, fetchFn) => {
     const base = "https://youporn.com";
     try {
-        const url = `${base}/search/${encodeURIComponent(query.trim())}${page > 1 ? `?page=${page}` : ""}`;
+        const pageSuffix = page === 1 ? "" : `?page=${page}`;
+        const url = `${base}/search/${encodeURIComponent(query.trim())}${pageSuffix}`;
         const res = await _fetchWithTimeout(url, fetchFn, { headers: _headers(base) });
         if (!res.ok)
             return [];
@@ -449,16 +452,25 @@ export default class LewdSearchEngine {
             return [];
         const doFetch = context?.fetch ?? fetch;
         const p = Math.max(1, Number(page) || 1);
+        const pageRange = Array.from({ length: MAX_PAGES }, (_, i) => p + i);
+        const fetchAllPages = async (fn) => {
+            const results = [];
+            for (const pg of pageRange) {
+                const r = await fn(query, pg, doFetch);
+                results.push(...r);
+            }
+            return results;
+        };
         const [eporner, iwara, xvideos, pornhub, xhamster, xnxx, youporn, redtube, tgtube] = await Promise.allSettled([
-            _eporner(query, p, doFetch),
-            _iwara(query, p, doFetch),
-            _xvideos(query, p, doFetch),
-            _pornhub(query, p, doFetch),
-            _xhamster(query, p, doFetch),
-            _xnxx(query, p, doFetch),
-            _youporn(query, p, doFetch),
-            _redtube(query, p, doFetch),
-            _tgtube(query, p, doFetch),
+            fetchAllPages(_eporner),
+            fetchAllPages(_iwara),
+            fetchAllPages(_xvideos),
+            fetchAllPages(_pornhub),
+            fetchAllPages(_xhamster),
+            fetchAllPages(_xnxx),
+            fetchAllPages(_youporn),
+            fetchAllPages(_redtube),
+            fetchAllPages(_tgtube),
         ]);
         return _interleave(eporner.status === "fulfilled" ? eporner.value : [], iwara.status === "fulfilled" ? iwara.value : [], xvideos.status === "fulfilled" ? xvideos.value : [], pornhub.status === "fulfilled" ? pornhub.value : [], xhamster.status === "fulfilled" ? xhamster.value : [], xnxx.status === "fulfilled" ? xnxx.value : [], youporn.status === "fulfilled" ? youporn.value : [], redtube.status === "fulfilled" ? redtube.value : [], tgtube.status === "fulfilled" ? tgtube.value : []);
     }

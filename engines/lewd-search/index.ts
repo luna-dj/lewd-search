@@ -5,6 +5,7 @@ export const bangShortcut = "lewd";
 
 const PER_SOURCE = 100;
 const TIMEOUT_MS = 8000;
+const MAX_PAGES = 5;
 
 const USER_AGENTS = [
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
@@ -222,7 +223,8 @@ const _xhamster = async (query: string, page: number, fetchFn: typeof fetch) => 
 const _xnxx = async (query: string, page: number, fetchFn: typeof fetch) => {
   const base = "https://www.xnxx.com";
   try {
-    const url = `${base}/search/${encodeURIComponent(query.trim())}${page > 1 ? `-${page}` : ""}`;
+    const pageSuffix = page === 1 ? "" : `-${page}`;
+    const url = `${base}/search/${encodeURIComponent(query.trim())}${pageSuffix}`;
     const res = await _fetchWithTimeout(url, fetchFn, { headers: _headers(base) });
     if (!res.ok) return [];
     const html = await res.text();
@@ -254,7 +256,8 @@ const _xnxx = async (query: string, page: number, fetchFn: typeof fetch) => {
 const _youporn = async (query: string, page: number, fetchFn: typeof fetch) => {
   const base = "https://youporn.com";
   try {
-    const url = `${base}/search/${encodeURIComponent(query.trim())}${page > 1 ? `?page=${page}` : ""}`;
+    const pageSuffix = page === 1 ? "" : `?page=${page}`;
+    const url = `${base}/search/${encodeURIComponent(query.trim())}${pageSuffix}`;
     const res = await _fetchWithTimeout(url, fetchFn, { headers: _headers(base) });
     if (!res.ok) return [];
     const html = await res.text();
@@ -375,17 +378,28 @@ export default class LewdSearchEngine {
     const doFetch = context?.fetch ?? fetch;
     const p = Math.max(1, Number(page) || 1);
 
+    const pageRange = Array.from({ length: MAX_PAGES }, (_, i) => p + i);
+
+    const fetchAllPages = async (fn: (q: string, pg: number, f: typeof fetch) => Promise<any[]>) => {
+      const results: any[] = [];
+      for (const pg of pageRange) {
+        const r = await fn(query, pg, doFetch);
+        results.push(...r);
+      }
+      return results;
+    };
+
     const [eporner, iwara, xvideos, pornhub, xhamster, xnxx, youporn, redtube, tgtube] =
       await Promise.allSettled([
-        _eporner(query, p, doFetch),
-        _iwara(query, p, doFetch),
-        _xvideos(query, p, doFetch),
-        _pornhub(query, p, doFetch),
-        _xhamster(query, p, doFetch),
-        _xnxx(query, p, doFetch),
-        _youporn(query, p, doFetch),
-        _redtube(query, p, doFetch),
-        _tgtube(query, p, doFetch),
+        fetchAllPages(_eporner),
+        fetchAllPages(_iwara),
+        fetchAllPages(_xvideos),
+        fetchAllPages(_pornhub),
+        fetchAllPages(_xhamster),
+        fetchAllPages(_xnxx),
+        fetchAllPages(_youporn),
+        fetchAllPages(_redtube),
+        fetchAllPages(_tgtube),
       ]);
 
     return _interleave(
