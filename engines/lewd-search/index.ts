@@ -2,6 +2,17 @@ import * as cheerio from "cheerio";
 
 export const name = "lewd-search"
 export const type = "NSFW"
+export const bangShortcut = "lewd"
+
+export const settingsSchema = [
+  { key: "enabled", label: "Enable lewd-search", type: "toggle", default: true },
+]
+
+let enabled = true
+
+export const configure = (settings: { enabled?: boolean }) => {
+  if (typeof settings.enabled === "boolean") enabled = settings.enabled
+}
 
 interface SearchResult {
   title: string
@@ -261,6 +272,8 @@ export const executeSearch = async (
     sentinel?: (r: { ok: boolean; status: number }, n?: string) => void
   }
 ): Promise<SearchResult[]> => {
+  if (!enabled) return []
+
   try {
     const f = context?.fetch ?? fetch
     const p = Math.max(1, Number(page) || 1)
