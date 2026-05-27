@@ -3,7 +3,8 @@ import * as cheerio from "cheerio";
 export const type = "NSFW";
 export const bangShortcut = "lewd";
 
-const PER_SOURCE = 20;
+const PER_SOURCE = 10;
+const TIMEOUT_MS = 8000;
 
 const USER_AGENTS = [
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
@@ -24,6 +25,16 @@ const _origin = (baseUrl) => {
   }
 };
 
+const _headers = (baseUrl) => {
+  const o = _origin(baseUrl);
+  return {
+    "User-Agent": _pickUa(),
+    Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    Referer: `${o}/`,
+  };
+};
+
 const _jsonHeaders = (baseUrl) => {
   const o = _origin(baseUrl);
   return {
@@ -32,36 +43,23 @@ const _jsonHeaders = (baseUrl) => {
     "Accept-Language": "en-US,en;q=0.9",
     Referer: `${o}/`,
     Origin: o,
-    "Sec-Fetch-Dest": "empty",
-    "Sec-Fetch-Mode": "cors",
-    "Sec-Fetch-Site": "same-origin",
   };
 };
 
-const _htmlHeaders = (baseUrl) => {
-  const o = _origin(baseUrl);
-  return {
-    "User-Agent": _pickUa(),
-    Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
-    Referer: `${o}/`,
-    "Upgrade-Insecure-Requests": "1",
-    "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "same-origin",
-    "Sec-Fetch-User": "?1",
-  };
+const _err = (src: string, e: unknown) => console.error(`[lewd/${src}]`, e);
+
+const _fetchWithTimeout = async (url: string, fetchFn: typeof fetch, options: RequestInit = {}) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const response = await fetchFn(url, { ...options, signal: controller.signal as any });
+    return response;
+  } finally {
+    clearTimeout(timeout);
+  }
 };
 
-const _stripHtml = (s) => {
-  if (typeof s !== "string") return "";
-  return s.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
-};
-
-const _slugToTitle = (slug) =>
-  slug.replace(/-+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()).trim();
-
-const _eporner = async (query, page, fetchFn) => {
+const _eporner = async (query: string, page: number, fetchFn: typeof fetch) => {
   try {
     const params = new URLSearchParams({
       q: query.trim(),
@@ -70,229 +68,169 @@ const _eporner = async (query, page, fetchFn) => {
       thumbsize: "big",
       format: "json",
     });
-    const res = await fetchFn(`https://www.eporner.com/api/v2/video/search/?${params}`, {
+    const res = await _fetchWithTimeout(`https://www.eporner.com/api/v2/video/search/?${params}`, fetchFn, {
       headers: { "User-Agent": _pickUa(), Accept: "application/json" },
     });
-    if (!res.ok) {
-      console.error(`[lewd/Eporner] HTTP ${res.status}`);
-      return [];
-    }
+    if (!res.ok) return [];
     const data = await res.json();
-    const results = (data?.videos ?? []).slice(0, PER_SOURCE).map((v) => ({
+    return (data?.videos ?? []).slice(0, PER_SOURCE).map((v: any) => ({
       title: `${v.title || ""} [${v.length_min || ""}]`,
       url: v.url || "",
-      snippet: `${(v.keywords || "").slice(0, 100)} | ${Number(v.views || 0).toLocaleString()} views`,
+      snippet: `${(v.keywords || "").slice(0, 80)} | ${Number(v.views || 0).toLocaleString()} views`,
       source: "Eporner",
       thumbnail: v.default_thumb?.src || undefined,
     }));
-    console.log(`[lewd/Eporner] ${results.length} results`);
-    return results;
-  } catch (err) {
-    console.error("[lewd/Eporner] Failed:", err);
-    return [];
-  }
+  } catch (e) { _err("Eporner", e); return []; }
 };
 
-const _iwara = async (query, page, fetchFn) => {
+const _iwara = async (query: string, page: number, fetchFn: typeof fetch) => {
   try {
     const params = new URLSearchParams({
       query: query.trim(),
       type: "video",
-      page: String(Math.max(0, Number(page) - 1)),
+      page: String(Math.max(0, page - 1)),
       limit: String(PER_SOURCE),
     });
-    const res = await fetchFn(`https://api.iwara.tv/search?${params}`, {
-      headers: {
-        ..._jsonHeaders("https://www.iwara.tv"),
-        Referer: "https://www.iwara.tv/",
-        Origin: "https://www.iwara.tv",
-      },
+    const res = await _fetchWithTimeout(`https://api.iwara.tv/search?${params}`, fetchFn, {
+      headers: { ..._jsonHeaders("https://www.iwara.tv"), Referer: "https://www.iwara.tv/" },
     });
-    if (!res.ok) {
-      console.error(`[lewd/Iwara] HTTP ${res.status}`);
-      return [];
-    }
+    if (!res.ok) return [];
     const data = await res.json();
-    const results = (data?.results ?? []).slice(0, PER_SOURCE).map((v) => {
-      const meta = [
-        v.numViews ? `${Number(v.numViews).toLocaleString()} views` : null,
-        v.numLikes ? `${Number(v.numLikes).toLocaleString()} likes` : null,
-      ].filter(Boolean).join(" · ");
-      const fileId = v.file?.id;
-      const thumbnail = fileId ? `https://i.iwara.tv/image/thumbnail/${fileId}/thumbnail-00.jpg` : undefined;
+    return (data?.results ?? []).slice(0, PER_SOURCE).map((v: any) => {
+      const meta = [v.numViews ? `${Number(v.numViews).toLocaleString()} views` : null, v.numLikes ? `${Number(v.numLikes).toLocaleString()} likes` : null].filter(Boolean).join(" · ");
       return {
         title: v.title || "",
         url: `https://www.iwara.tv/video/${v.id}/${v.slug || ""}`,
         snippet: meta,
         source: "Iwara",
-        thumbnail,
+        thumbnail: v.file?.id ? `https://i.iwara.tv/image/thumbnail/${v.file.id}/thumbnail-00.jpg` : undefined,
       };
     });
-    console.log(`[lewd/Iwara] ${results.length} results`);
-    return results;
-  } catch (err) {
-    console.error("[lewd/Iwara] Failed:", err);
-    return [];
-  }
+  } catch (e) { _err("Iwara", e); return []; }
 };
 
-const _xvideos = async (query, page, fetchFn) => {
+const _xvideos = async (query: string, page: number, fetchFn: typeof fetch) => {
   const base = "https://www.xvideos.com";
   try {
     const url = `${base}/?k=${encodeURIComponent(query.trim())}&p=${page}`;
-    const res = await fetchFn(url, { headers: _htmlHeaders(base) });
-    if (!res.ok) {
-      console.error(`[lewd/XVideos] HTTP ${res.status}`);
-      return [];
-    }
+    const res = await _fetchWithTimeout(url, fetchFn, { headers: _headers(base) });
+    if (!res.ok) return [];
     const html = await res.text();
     const $ = cheerio.load(html);
-    const results = [];
-    const seen = new Set();
+    const results: any[] = [];
+    const seen = new Set<string>();
 
-    $("div.thumb-under").each((_, el) => {
-      if (results.length >= PER_SOURCE) return false;
-      const a = $(el).find("a").first();
-      let href = a.attr("href") || "";
-      if (!href) return;
-      if (href.startsWith("//")) href = `https:${href}`;
-      else if (href.startsWith("/")) href = `${base}${href}`;
-      if (seen.has(href)) return;
-      if (!href.includes("xvideos.com")) return;
-      seen.add(href);
-
-      const img = $(el).find("img").first();
-      const thumb = img.attr("src") || img.attr("data-src") || undefined;
-      const title = (img.attr("alt") || a.text().trim() || "").trim();
-      const dur = $(el).find("span.duration").text().trim();
-      if (title) results.push({
-        title: `${title}${dur ? ` [${dur}]` : ""}`,
-        url: href,
-        snippet: "",
-        source: "XVideos",
-        thumbnail: thumb,
+    const selectors = ["div.thumb-under", "div.thumb", "div.video-thumb-bg", "div.thumb-block"];
+    for (const sel of selectors) {
+      if (results.length >= PER_SOURCE) break;
+      $(sel).each((_, el) => {
+        if (results.length >= PER_SOURCE) return false;
+        const a = $(el).find("a").first();
+        let href = a.attr("href") || "";
+        if (!href || href.includes("/professor")) return;
+        if (href.startsWith("//")) href = `https:${href}`;
+        else if (href.startsWith("/")) href = `${base}${href}`;
+        if (seen.has(href)) return;
+        if (!href.includes("xvideos.com")) return;
+        seen.add(href);
+        const img = $(el).find("img").first();
+        const thumb = img.attr("src") || img.attr("data-src") || undefined;
+        const title = (img.attr("alt") || a.text().trim() || "").trim();
+        const dur = $(el).find("span.duration").text().trim();
+        if (title) results.push({ title: `${title}${dur ? ` [${dur}]` : ""}`, url: href, snippet: "", source: "XVideos", thumbnail: thumb });
+        return undefined;
       });
-      return undefined;
-    });
-
-    console.log(`[lewd/XVideos] ${results.length} results`);
+    }
     return results;
-  } catch (err) {
-    console.error("[lewd/XVideos] Failed:", err);
-    return [];
-  }
+  } catch (e) { _err("XVideos", e); return []; }
 };
 
-const _pornhub = async (query, page, fetchFn) => {
+const _pornhub = async (query: string, page: number, fetchFn: typeof fetch) => {
   const base = "https://www.pornhub.com";
   try {
     const url = `${base}/video/search?search=${encodeURIComponent(query.trim())}&page=${page}`;
-    const res = await fetchFn(url, { headers: _htmlHeaders(base) });
-    if (!res.ok) {
-      console.error(`[lewd/Pornhub] HTTP ${res.status}`);
-      return [];
-    }
+    const res = await _fetchWithTimeout(url, fetchFn, { headers: _headers(base) });
+    if (!res.ok) return [];
     const html = await res.text();
     const $ = cheerio.load(html);
-    const results = [];
-    const seen = new Set();
+    const results: any[] = [];
+    const seen = new Set<string>();
 
-    $("div.video-item").each((_, el) => {
-      if (results.length >= PER_SOURCE) return false;
-      const a = $(el).find("a.video-link").first();
-      let href = a.attr("href") || "";
-      if (!href) return;
-      if (href.startsWith("//")) href = `https:${href}`;
-      else if (href.startsWith("/")) href = `${base}${href}`;
-      if (seen.has(href)) return;
-      if (!href.includes("pornhub.com")) return;
-      seen.add(href);
-
-      const img = $(el).find("img").first();
-      const thumb = img.attr("data-src") || img.attr("src") || undefined;
-      const title = (img.attr("alt") || a.text().trim() || "").trim();
-      const dur = $(el).find("span.duration").text().trim();
-      const views = $(el).find("span.views").text().trim();
-      if (title) results.push({
-        title: `${title}${dur ? ` [${dur}]` : ""}`,
-        url: href,
-        snippet: views,
-        source: "Pornhub",
-        thumbnail: thumb,
+    const selectors = ["div.video-item", "div.video-wrapper", "div thumbnail协同"];
+    for (const sel of selectors) {
+      if (results.length >= PER_SOURCE) break;
+      $(sel).each((_, el) => {
+        if (results.length >= PER_SOURCE) return false;
+        const a = $(el).find("a.video-link").first();
+        if (!a.length) return;
+        let href = a.attr("href") || "";
+        if (!href) return;
+        if (href.startsWith("//")) href = `https:${href}`;
+        else if (href.startsWith("/")) href = `${base}${href}`;
+        if (seen.has(href)) return;
+        if (!href.includes("pornhub.com")) return;
+        seen.add(href);
+        const img = $(el).find("img").first();
+        const thumb = img.attr("data-src") || img.attr("src") || undefined;
+        const title = (img.attr("alt") || a.text().trim() || "").trim();
+        const dur = $(el).find("span.duration").text().trim();
+        const views = $(el).find("span.views").text().trim();
+        if (title) results.push({ title: `${title}${dur ? ` [${dur}]` : ""}`, url: href, snippet: views, source: "Pornhub", thumbnail: thumb });
+        return undefined;
       });
-      return undefined;
-    });
-
-    console.log(`[lewd/Pornhub] ${results.length} results`);
+    }
     return results;
-  } catch (err) {
-    console.error("[lewd/Pornhub] Failed:", err);
-    return [];
-  }
+  } catch (e) { _err("Pornhub", e); return []; }
 };
 
-const _xhamster = async (query, page, fetchFn) => {
+const _xhamster = async (query: string, page: number, fetchFn: typeof fetch) => {
   const base = "https://xhamster.com";
   try {
     const url = `${base}/search?q=${encodeURIComponent(query.trim())}&page=${page}`;
-    const res = await fetchFn(url, { headers: _htmlHeaders(base) });
-    if (!res.ok) {
-      console.error(`[lewd/xHamster] HTTP ${res.status}`);
-      return [];
-    }
+    const res = await _fetchWithTimeout(url, fetchFn, { headers: _headers(base) });
+    if (!res.ok) return [];
     const html = await res.text();
     const $ = cheerio.load(html);
-    const results = [];
-    const seen = new Set();
+    const results: any[] = [];
+    const seen = new Set<string>();
 
-    $("div.video-thumb").each((_, el) => {
-      if (results.length >= PER_SOURCE) return false;
-      const a = $(el).find("a").first();
-      let href = a.attr("href") || "";
-      if (!href) return;
-      if (href.startsWith("//")) href = `https:${href}`;
-      else if (href.startsWith("/")) href = `${base}${href}`;
-      if (seen.has(href)) return;
-      if (!href.includes("xhamster.com")) return;
-      seen.add(href);
-
-      const img = $(el).find("img").first();
-      const thumb = img.attr("data-src") || img.attr("src") || undefined;
-      const title = (img.attr("alt") || a.attr("title") || a.text().trim() || "").trim();
-      const dur = $(el).find("span.duration").text().trim();
-      if (title) results.push({
-        title: `${title}${dur ? ` [${dur}]` : ""}`,
-        url: href,
-        snippet: "",
-        source: "xHamster",
-        thumbnail: thumb,
+    const selectors = ["div.video-thumb", "div.thumb-list__item", "div.video-thumb-new"];
+    for (const sel of selectors) {
+      if (results.length >= PER_SOURCE) break;
+      $(sel).each((_, el) => {
+        if (results.length >= PER_SOURCE) return false;
+        const a = $(el).find("a").first();
+        let href = a.attr("href") || "";
+        if (!href) return;
+        if (href.startsWith("//")) href = `https:${href}`;
+        else if (href.startsWith("/")) href = `${base}${href}`;
+        if (seen.has(href)) return;
+        if (!href.includes("xhamster.com")) return;
+        seen.add(href);
+        const img = $(el).find("img").first();
+        const thumb = img.attr("data-src") || img.attr("src") || undefined;
+        const title = (img.attr("alt") || a.attr("title") || a.text().trim() || "").trim();
+        const dur = $(el).find("span.duration").text().trim();
+        if (title) results.push({ title: `${title}${dur ? ` [${dur}]` : ""}`, url: href, snippet: "", source: "xHamster", thumbnail: thumb });
+        return undefined;
       });
-      return undefined;
-    });
-
-    console.log(`[lewd/xHamster] ${results.length} results`);
+    }
     return results;
-  } catch (err) {
-    console.error("[lewd/xHamster] Failed:", err);
-    return [];
-  }
+  } catch (e) { _err("xHamster", e); return []; }
 };
 
-const _xnxx = async (query, page, fetchFn) => {
+const _xnxx = async (query: string, page: number, fetchFn: typeof fetch) => {
   const base = "https://www.xnxx.com";
   try {
     const url = `${base}/search/${encodeURIComponent(query.trim())}${page > 1 ? `-${page}` : ""}`;
-    const res = await fetchFn(url, { headers: _htmlHeaders(base) });
-    if (!res.ok) {
-      console.error(`[lewd/XNXX] HTTP ${res.status}`);
-      return [];
-    }
+    const res = await _fetchWithTimeout(url, fetchFn, { headers: _headers(base) });
+    if (!res.ok) return [];
     const html = await res.text();
     const $ = cheerio.load(html);
-    const results = [];
-    const seen = new Set();
+    const results: any[] = [];
+    const seen = new Set<string>();
 
-    $("div.thumb").each((_, el) => {
+    $("div.thumb, div.video-thumb, div.thumb-block").each((_, el) => {
       if (results.length >= PER_SOURCE) return false;
       const a = $(el).find("a").first();
       let href = a.attr("href") || "";
@@ -302,44 +240,29 @@ const _xnxx = async (query, page, fetchFn) => {
       if (seen.has(href)) return;
       if (!href.includes("xnxx.com")) return;
       seen.add(href);
-
       const img = $(el).find("img").first();
       const thumb = img.attr("src") || img.attr("data-src") || undefined;
       const title = (img.attr("alt") || a.text().trim() || "").trim();
       const dur = $(el).find("span.duration").text().trim();
-      if (title) results.push({
-        title: `${title}${dur ? ` [${dur}]` : ""}`,
-        url: href,
-        snippet: "",
-        source: "XNXX",
-        thumbnail: thumb,
-      });
+      if (title) results.push({ title: `${title}${dur ? ` [${dur}]` : ""}`, url: href, snippet: "", source: "XNXX", thumbnail: thumb });
       return undefined;
     });
-
-    console.log(`[lewd/XNXX] ${results.length} results`);
     return results;
-  } catch (err) {
-    console.error("[lewd/XNXX] Failed:", err);
-    return [];
-  }
+  } catch (e) { _err("XNXX", e); return []; }
 };
 
-const _youporn = async (query, page, fetchFn) => {
+const _youporn = async (query: string, page: number, fetchFn: typeof fetch) => {
   const base = "https://youporn.com";
   try {
     const url = `${base}/search/${encodeURIComponent(query.trim())}${page > 1 ? `?page=${page}` : ""}`;
-    const res = await fetchFn(url, { headers: _htmlHeaders(base) });
-    if (!res.ok) {
-      console.error(`[lewd/YouPorn] HTTP ${res.status}`);
-      return [];
-    }
+    const res = await _fetchWithTimeout(url, fetchFn, { headers: _headers(base) });
+    if (!res.ok) return [];
     const html = await res.text();
     const $ = cheerio.load(html);
-    const results = [];
-    const seen = new Set();
+    const results: any[] = [];
+    const seen = new Set<string>();
 
-    $("div.video-item").each((_, el) => {
+    $("div.video-item, div.video-block").each((_, el) => {
       if (results.length >= PER_SOURCE) return false;
       const a = $(el).find("a[href*='/watch/']").first();
       let href = a.attr("href") || "";
@@ -349,44 +272,29 @@ const _youporn = async (query, page, fetchFn) => {
       if (seen.has(href)) return;
       if (!href.includes("youporn.com")) return;
       seen.add(href);
-
       const img = $(el).find("img").first();
       const thumb = img.attr("data-src") || img.attr("src") || undefined;
       const title = (img.attr("alt") || a.text().trim() || "").trim();
       const dur = $(el).find("span.duration").text().trim();
-      if (title) results.push({
-        title: `${title}${dur ? ` [${dur}]` : ""}`,
-        url: href,
-        snippet: "",
-        source: "YouPorn",
-        thumbnail: thumb,
-      });
+      if (title) results.push({ title: `${title}${dur ? ` [${dur}]` : ""}`, url: href, snippet: "", source: "YouPorn", thumbnail: thumb });
       return undefined;
     });
-
-    console.log(`[lewd/YouPorn] ${results.length} results`);
     return results;
-  } catch (err) {
-    console.error("[lewd/YouPorn] Failed:", err);
-    return [];
-  }
+  } catch (e) { _err("YouPorn", e); return []; }
 };
 
-const _redtube = async (query, page, fetchFn) => {
+const _redtube = async (query: string, page: number, fetchFn: typeof fetch) => {
   const base = "https://www.redtube.com";
   try {
     const url = `${base}/search?search=${encodeURIComponent(query.trim())}&page=${page}`;
-    const res = await fetchFn(url, { headers: _htmlHeaders(base) });
-    if (!res.ok) {
-      console.error(`[lewd/RedTube] HTTP ${res.status}`);
-      return [];
-    }
+    const res = await _fetchWithTimeout(url, fetchFn, { headers: _headers(base) });
+    if (!res.ok) return [];
     const html = await res.text();
     const $ = cheerio.load(html);
-    const results = [];
-    const seen = new Set();
+    const results: any[] = [];
+    const seen = new Set<string>();
 
-    $("div.video-item").each((_, el) => {
+    $("div.video-item, div.video_block").each((_, el) => {
       if (results.length >= PER_SOURCE) return false;
       const a = $(el).find("a").first();
       let href = a.attr("href") || "";
@@ -396,44 +304,29 @@ const _redtube = async (query, page, fetchFn) => {
       if (seen.has(href)) return;
       if (!href.includes("redtube.com")) return;
       seen.add(href);
-
       const img = $(el).find("img").first();
       const thumb = img.attr("data-src") || img.attr("src") || undefined;
       const title = (img.attr("alt") || a.text().trim() || "").trim();
       const dur = $(el).find("span.duration").text().trim();
-      if (title) results.push({
-        title: `${title}${dur ? ` [${dur}]` : ""}`,
-        url: href,
-        snippet: "",
-        source: "RedTube",
-        thumbnail: thumb,
-      });
+      if (title) results.push({ title: `${title}${dur ? ` [${dur}]` : ""}`, url: href, snippet: "", source: "RedTube", thumbnail: thumb });
       return undefined;
     });
-
-    console.log(`[lewd/RedTube] ${results.length} results`);
     return results;
-  } catch (err) {
-    console.error("[lewd/RedTube] Failed:", err);
-    return [];
-  }
+  } catch (e) { _err("RedTube", e); return []; }
 };
 
-const _tgtube = async (query, page, fetchFn) => {
+const _tgtube = async (query: string, page: number, fetchFn: typeof fetch) => {
   const base = "https://www.tgtube.com";
   try {
     const url = `${base}/search/${encodeURIComponent(query.trim())}${page > 1 ? `?page=${page}` : ""}`;
-    const res = await fetchFn(url, { headers: _htmlHeaders(base) });
-    if (!res.ok) {
-      console.error(`[lewd/TGTube] HTTP ${res.status}`);
-      return [];
-    }
+    const res = await _fetchWithTimeout(url, fetchFn, { headers: _headers(base) });
+    if (!res.ok) return [];
     const html = await res.text();
     const $ = cheerio.load(html);
-    const results = [];
-    const seen = new Set();
+    const results: any[] = [];
+    const seen = new Set<string>();
 
-    $("div.video-item, div.thumb").each((_, el) => {
+    $("div.video-item, div.thumb, div.video-thumb").each((_, el) => {
       if (results.length >= PER_SOURCE) return false;
       const a = $(el).find("a").first();
       let href = a.attr("href") || "";
@@ -443,89 +336,21 @@ const _tgtube = async (query, page, fetchFn) => {
       if (seen.has(href)) return;
       if (!href.includes("tgtube.com")) return;
       seen.add(href);
-
       const img = $(el).find("img").first();
       const thumb = img.attr("data-src") || img.attr("src") || undefined;
       const title = (img.attr("alt") || img.attr("title") || a.text().trim() || "").trim();
       const dur = $(el).find("span.duration").text().trim();
-      if (title) results.push({
-        title: `${title}${dur ? ` [${dur}]` : ""}`,
-        url: href,
-        snippet: "Trans",
-        source: "TGTube",
-        thumbnail: thumb,
-      });
+      if (title) results.push({ title: `${title}${dur ? ` [${dur}]` : ""}`, url: href, snippet: "Trans", source: "TGTube", thumbnail: thumb });
       return undefined;
     });
-
-    console.log(`[lewd/TGTube] ${results.length} results`);
     return results;
-  } catch (err) {
-    console.error("[lewd/TGTube] Failed:", err);
-    return [];
-  }
+  } catch (e) { _err("TGTube", e); return []; }
 };
 
-const _r34video = async (query, page, fetchFn) => {
-  const base = "https://rule34video.com";
-  try {
-    const url = `${base}/video/?search=${encodeURIComponent(query.trim())}&submit=Search&page=${page}`;
-    const res = await fetchFn(url, { headers: _htmlHeaders(base) });
-    if (!res.ok) {
-      console.error(`[lewd/Rule34Video] HTTP ${res.status}`);
-      return [];
-    }
-    const html = await res.text();
-    const $ = cheerio.load(html);
-    const results = [];
-    const seen = new Set();
-
-    $("a[href*='/video/']").each((_, el) => {
-      if (results.length >= PER_SOURCE) return false;
-      let href = $(el).attr("href") || "";
-      if (!href || !/\/video\/\d+/i.test(href)) return;
-      if (href.startsWith("//")) href = `https:${href}`;
-      else if (href.startsWith("/")) href = `${base}${href}`;
-      else if (!href.startsWith("http")) return;
-      if (!href.includes("rule34video.com")) return;
-      if (seen.has(href)) return;
-      seen.add(href);
-
-      const row = $(el).closest("div").parent().closest("div");
-      let thumbEl = row.find("img[data-src], img[data-original], img[data-lazy-src]").first();
-      if (!thumbEl.length) thumbEl = $(el).closest("div").find("img").first();
-      const thumb = thumbEl.attr("data-src") || thumbEl.attr("data-original") || thumbEl.attr("data-lazy-src") || thumbEl.attr("src") || undefined;
-      let title = (thumbEl.attr("alt") || $(el).attr("title") || $(el).text() || "").trim();
-      if (!title || title.length < 2) {
-        const slug = href.split("/").filter(Boolean).pop() || "";
-        title = _slugToTitle(slug.replace(/\.[^.]+$/, ""));
-      }
-      if (title) results.push({
-        title,
-        url: href,
-        snippet: "",
-        source: "Rule34Video",
-        thumbnail: thumb,
-      });
-      return undefined;
-    });
-
-    console.log(`[lewd/Rule34Video] ${results.length} results`);
-    return results;
-  } catch (err) {
-    console.error("[lewd/Rule34Video] Failed:", err);
-    return [];
-  }
-};
-
-const _interleave = (...arrays) => {
-  const result = [];
+const _interleave = (...arrays: any[][]) => {
+  const result: any[] = [];
   const max = Math.max(0, ...arrays.map((a) => a.length));
-  for (let i = 0; i < max; i++) {
-    for (const arr of arrays) {
-      if (i < arr.length) result.push(arr[i]);
-    }
-  }
+  for (let i = 0; i < max; i++) for (const arr of arrays) if (i < arr.length) result.push(arr[i]);
   return result;
 };
 
@@ -540,17 +365,17 @@ export default class LewdSearchEngine {
 
   enabled = true;
 
-  configure(settings) {
+  configure(settings: { enabled?: boolean }) {
     if (typeof settings.enabled === "boolean") this.enabled = settings.enabled;
   }
 
-  async executeSearch(query, page = 1, _timeFilter, context) {
+  async executeSearch(query: string, page = 1, _timeFilter: string, context: any) {
     if (!this.enabled) return [];
 
     const doFetch = context?.fetch ?? fetch;
-    const p = Number(page) || 1;
+    const p = Math.max(1, Number(page) || 1);
 
-    const [eporner, iwara, xvideos, pornhub, xhamster, xnxx, youporn, redtube, tgtube, r34v] =
+    const [eporner, iwara, xvideos, pornhub, xhamster, xnxx, youporn, redtube, tgtube] =
       await Promise.allSettled([
         _eporner(query, p, doFetch),
         _iwara(query, p, doFetch),
@@ -561,7 +386,6 @@ export default class LewdSearchEngine {
         _youporn(query, p, doFetch),
         _redtube(query, p, doFetch),
         _tgtube(query, p, doFetch),
-        _r34video(query, p, doFetch),
       ]);
 
     return _interleave(
@@ -574,7 +398,6 @@ export default class LewdSearchEngine {
       youporn.status === "fulfilled" ? youporn.value : [],
       redtube.status === "fulfilled" ? redtube.value : [],
       tgtube.status === "fulfilled" ? tgtube.value : [],
-      r34v.status === "fulfilled" ? r34v.value : [],
     );
   }
 }
