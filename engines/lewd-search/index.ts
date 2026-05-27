@@ -48,7 +48,10 @@ const _jsonHeaders = (baseUrl) => {
   };
 };
 
-const _err = (src: string, e: unknown) => console.error(`[lewd/${src}]`, e);
+const _err = (src: string, e: unknown) => {
+  if (e instanceof Error && e.name === "AbortError") return;
+  console.error(`[lewd/${src}]`, e);
+};
 
 const _fetchWithTimeout = async (url: string, fetchFn: typeof fetch, options: RequestInit = {}) => {
   const controller = new AbortController();
@@ -382,45 +385,47 @@ export default class LewdSearchEngine {
     const pageRange = Array.from({ length: MAX_PAGES }, (_, i) => p + i);
 
     const fetchAllPages = async (fn: (q: string, pg: number, f: typeof fetch) => Promise<any[]>) => {
-      const results = await Promise.allSettled(pageRange.map((pg) => fn(query, pg, doFetch)));
-      return results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+      try {
+        const results = await Promise.allSettled(pageRange.map((pg) => fn(query, pg, doFetch)));
+        return results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+      } catch {
+        return [];
+      }
     };
 
-    const [eporner, iwara, xvideos, pornhub, xhamster, xnxx, youporn, redtube, tgtube] =
-      await Promise.race([
-        Promise.allSettled([
-          fetchAllPages(_eporner),
-          fetchAllPages(_iwara),
-          fetchAllPages(_xvideos),
-          fetchAllPages(_pornhub),
-          fetchAllPages(_xhamster),
-          fetchAllPages(_xnxx),
-          fetchAllPages(_youporn),
-          fetchAllPages(_redtube),
-          fetchAllPages(_tgtube),
-        ]),
-        new Promise<"timedout">((resolve) => setTimeout(() => resolve("timedout"), GLOBAL_TIMEOUT_MS)),
-      ]) as any;
+    const sourceFns = [
+      fetchAllPages(_eporner),
+      fetchAllPages(_iwara),
+      fetchAllPages(_xvideos),
+      fetchAllPages(_pornhub),
+      fetchAllPages(_xhamster),
+      fetchAllPages(_xnxx),
+      fetchAllPages(_youporn),
+      fetchAllPages(_redtube),
+      fetchAllPages(_tgtube),
+    ];
 
-    const timedout = eporner === "timedout";
-    if (timedout) {
+    const timeoutPromise = new Promise<null[]>((resolve) => setTimeout(() => resolve(null), GLOBAL_TIMEOUT_MS));
+    const results = await Promise.race([Promise.allSettled(sourceFns), timeoutPromise]);
+
+    let settled: any[];
+    if (results === null) {
       console.warn("[lewd] Global timeout exceeded");
+      settled = sourceFns.map(() => ({ status: "rejected" }));
+    } else {
+      settled = results as any;
     }
 
-    const sources = timedout
-      ? [{ status: "rejected" }, { status: "rejected" }, { status: "rejected" }, { status: "rejected" }, { status: "rejected" }, { status: "rejected" }, { status: "rejected" }, { status: "rejected" }, { status: "rejected" }]
-      : eporner;
-
     return _interleave(
-      sources[0].status === "fulfilled" ? sources[0].value : [],
-      sources[1].status === "fulfilled" ? sources[1].value : [],
-      sources[2].status === "fulfilled" ? sources[2].value : [],
-      sources[3].status === "fulfilled" ? sources[3].value : [],
-      sources[4].status === "fulfilled" ? sources[4].value : [],
-      sources[5].status === "fulfilled" ? sources[5].value : [],
-      sources[6].status === "fulfilled" ? sources[6].value : [],
-      sources[7].status === "fulfilled" ? sources[7].value : [],
-      sources[8].status === "fulfilled" ? sources[8].value : [],
+      settled[0].status === "fulfilled" ? settled[0].value : [],
+      settled[1].status === "fulfilled" ? settled[1].value : [],
+      settled[2].status === "fulfilled" ? settled[2].value : [],
+      settled[3].status === "fulfilled" ? settled[3].value : [],
+      settled[4].status === "fulfilled" ? settled[4].value : [],
+      settled[5].status === "fulfilled" ? settled[5].value : [],
+      settled[6].status === "fulfilled" ? settled[6].value : [],
+      settled[7].status === "fulfilled" ? settled[7].value : [],
+      settled[8].status === "fulfilled" ? settled[8].value : [],
     );
   }
 }
