@@ -7,7 +7,7 @@
       "path": "engines/lewd-search",
       "name": "lewd-search",
       "description": "Multi-source NSFW engine aggregating Eporner (API), XVideos, Pornhub, xHamster, XNXX, YouPorn, RedTube, TGTube (cheerio), Iwara (API), Rule34Video. Use !lewd <query>.",
-      "version": "1.0.4"
+      "version": "1.0.5"
     }
   ],
   "scripts": {
