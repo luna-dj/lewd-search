@@ -1,4 +1,12 @@
 {
   "name": "lewd-search",
-  "url": "https://github.com/degoog-org/official-extensions"
+  "url": "https://github.com/luna-dj/lewd-search",
+  "description": "NSFW search engine for DeGoog - aggregates Eporner, XVideos, Pornhub, xHamster, XNXX, YouPorn, RedTube, TGTube, Iwara",
+  "version": "1.0.2",
+  "maintainers": [
+    {
+      "name": "luna-dj",
+      "url": "https://github.com/luna-dj"
+    }
+  ]
 }
