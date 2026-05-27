@@ -1,0 +1,17 @@
+{
+  "name": "lewd-search-engine",
+  "description": "NSFW search engine for DeGoog - aggregates Gelbooru, Safebooru, and Danbooru",
+  "author": "",
+  "plugins": [],
+  "themes": [],
+  "engines": [
+    {
+      "path": "engines/lewd-search",
+      "name": "lewd-search",
+      "description": "NSFW search aggregating Gelbooru, Safebooru, and Danbooru",
+      "version": "1.0.0"
+    }
+  ],
+  "transports": [],
+  "autocomplete": []
+}
