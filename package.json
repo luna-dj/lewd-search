@@ -2,19 +2,21 @@
   "name": "lewd-search-engine",
   "description": "NSFW search engine for DeGoog - aggregates Eporner, XVideos, Pornhub, xHamster, XNXX, YouPorn, RedTube, TGTube, Iwara",
   "author": "",
-  "plugins": [],
-  "themes": [],
   "engines": [
     {
       "path": "engines/lewd-search",
       "name": "lewd-search",
       "description": "NSFW search aggregating Eporner, XVideos, Pornhub, xHamster, XNXX, YouPorn, RedTube, TGTube, Iwara",
-      "version": "1.0.1.1"
+      "version": "1.0.2"
     }
   ],
   "transports": [],
   "autocomplete": [],
-  "dependencies": {
-    "cheerio": "^1.2.0"
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "cheerio": "^1.0.0"
   }
 }
