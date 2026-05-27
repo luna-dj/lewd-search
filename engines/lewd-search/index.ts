@@ -3,7 +3,7 @@ import * as cheerio from "cheerio";
 export const type = "NSFW";
 export const bangShortcut = "lewd";
 
-const PER_SOURCE = 10;
+const PER_SOURCE = 20;
 
 const USER_AGENTS = [
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
