@@ -1,54 +1,20 @@
 # lewd-search
 
-A custom NSFW search engine for DeGoog that scrapes real porn sites with cheerio.
+NSFW search engine for DeGoog - aggregates from 9 real porn sites.
 
-## Features
+## Sources (9)
 
-- **19 porn sources** - Cheerio HTML scraping from real adult tube sites
-- **Privacy-first** - Rotating user-agents, no Google tracking
-- **Interleaved results** - Rotates results from each source
-- **Trans-specific** - Dedicated trans/shemale sites included
-
-## Supported Sources (19)
-
-### Major Porn Tubes
-| Source | Type |
-|--------|------|
-| Eporner | HD Porn (API) |
-| XVideos | Porn tube |
-| Pornhub | Porn tube |
-| xHamster | Porn tube |
-| XNXX | Porn tube |
-| YouPorn | Porn tube |
-| RedTube | Porn tube |
-| TNAFlix | Porn tube |
-| HQPorner | HQ Porn |
-| AnyBunny | Porn tube |
-| PornEQ | Porn tube |
-
-### Image Boards / Other
-| Source | Type |
-|--------|------|
-| Rule34Video | Video board |
-| EmPornium | Image board |
-| Iwara | Video (JSON API) |
-
-### Trans/Shemale
-| Source | Type |
-|--------|------|
-| TGTube | Trans porn |
-| Shemale.com | Shemale/TS |
-| Tranny.com | Tranny/Trans |
-
-### JAV
-| Source | Type |
-|--------|------|
-| JAVWhores | Japanese adult |
-
-### Eporner HTML Fallback
-| Source | Type |
-|--------|------|
-| Eporner-direct | HTML scrape |
+| Source | Type | Method |
+|--------|------|--------|
+| Eporner | HD Porn | JSON API |
+| Iwara | Video | JSON API |
+| XVideos | Porn tube | HTML scrape |
+| Pornhub | Porn tube | HTML scrape |
+| xHamster | Porn tube | HTML scrape |
+| XNXX | Porn tube | HTML scrape |
+| YouPorn | Porn tube | HTML scrape |
+| RedTube | Porn tube | HTML scrape |
+| TGTube | Trans porn | HTML scrape |
 
 ## Usage
 
@@ -56,9 +22,11 @@ A custom NSFW search engine for DeGoog that scrapes real porn sites with cheerio
 !lewd milf
 !lewd teen 2
 !lewd shemale
-!lewd anal japanese 4k
 ```
 
-## Legal Notice
+## Notes
 
-Users responsible for compliance with applicable laws and site terms.
+- Rotating user-agents
+- Parallel fetching with Promise.allSettled
+- Interleaved results from each source
+- Failures don't break the search
